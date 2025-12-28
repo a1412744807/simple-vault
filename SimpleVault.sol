@@ -30,14 +30,28 @@ contract SimpleVault {
         
         Deposit storage d = deposits[msg.sender];
         
-        // 如果已有存款，先结算可提取金额
+        // 如果已有存款，先自动提取已解锁部分
         if (d.amount > 0) {
             uint256 unlocked = getUnlocked(msg.sender);
-            d.withdrawn = unlocked; // 更新已提取基准
+            uint256 toWithdraw = unlocked - d.withdrawn;
+            
+            if (toWithdraw > 0) {
+                d.withdrawn = unlocked; // 更新已提取金额
+                
+                // 自动转账已解锁部分
+                (bool success, ) = payable(msg.sender).call{value: toWithdraw}("");
+                require(success, "Auto withdraw failed");
+                
+                emit Withdrawn(msg.sender, toWithdraw);
+            }
+            
+            // 追加存款：不重置时间，保持原有的解锁进度
+        } else {
+            // 首次存款：设置开始时间
+            d.startTime = block.timestamp;
         }
         
         d.amount += msg.value;
-        d.startTime = block.timestamp;
         
         emit Deposited(msg.sender, msg.value);
     }

@@ -10,7 +10,8 @@ const CONTRACT_ADDRESS = '0xe904c5BC6f598163D12FE0b2fBddBBE57cB29FF5';
 const ABI = [
     'function deposit() external payable',
     'function withdraw() external',
-    'function getUserInfo(address) view returns (uint256 deposited, uint256 unlocked, uint256 withdrawn, uint256 withdrawable)'
+    'function getUserInfo(address) view returns (uint256 deposited, uint256 unlocked, uint256 withdrawn, uint256 withdrawable)',
+    'function deposits(address) view returns (uint256 amount, uint256 startTime, uint256 withdrawn)'
 ];
 
 // ========== 状态 ==========
@@ -19,6 +20,8 @@ let provider = null;
 let signer = null;
 let contract = null;
 let userAddress = null;
+let userDepositData = null; // 缓存用户存款数据
+let liveUpdateInterval = null; // 实时更新定时器
 
 // ========== 初始化 ==========
 
@@ -36,10 +39,10 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('withdrawBtn').onclick = withdraw;
     document.getElementById('maxBtn').onclick = setMax;
     
-    // 每5秒自动刷新数据（测试模式，看数字增长）
+    // 每30秒刷新一次区块链数据（校准）
     setInterval(() => {
         if (contract) updateData();
-    }, 5000);
+    }, 30000);
     
     // 点击弹窗外部关闭
     document.getElementById('walletModal').onclick = (e) => {
@@ -270,6 +273,53 @@ async function withdraw() {
 
 // ========== 数据更新 ==========
 
+// 实时计算已解锁金额（每秒调用）
+function calculateLiveUnlocked() {
+    if (!userDepositData || userDepositData.deposited === 0) return;
+    
+    const depositAmount = userDepositData.deposited;
+    const startTime = userDepositData.startTime;
+    const withdrawn = userDepositData.withdrawn;
+    
+    // 计算已经过去的秒数
+    const now = Math.floor(Date.now() / 1000);
+    const secondsPassed = now - startTime;
+    
+    // 每60秒解锁1%，总共120%
+    const unlockPercent = Math.min((secondsPassed / 60) * 1, 100);
+    const totalAmount = depositAmount * 1.2; // 本金 + 20%收益
+    const unlocked = (totalAmount * unlockPercent) / 100;
+    
+    // 计算可提取金额
+    const withdrawable = Math.max(0, unlocked - withdrawn);
+    
+    // 平滑更新显示（不使用动画，直接设置）
+    document.getElementById('unlocked').textContent = unlocked.toFixed(6);
+    document.getElementById('withdrawable').textContent = withdrawable.toFixed(6);
+    
+    // 更新提取按钮状态
+    document.getElementById('withdrawBtn').disabled = withdrawable <= 0;
+}
+
+// 启动实时更新
+function startLiveUpdate() {
+    // 清除旧的定时器
+    if (liveUpdateInterval) {
+        clearInterval(liveUpdateInterval);
+    }
+    
+    // 每秒更新一次
+    liveUpdateInterval = setInterval(calculateLiveUnlocked, 1000);
+}
+
+// 停止实时更新
+function stopLiveUpdate() {
+    if (liveUpdateInterval) {
+        clearInterval(liveUpdateInterval);
+        liveUpdateInterval = null;
+    }
+}
+
 async function updateData() {
     if (!userAddress) return;
     
@@ -278,14 +328,32 @@ async function updateData() {
         animateNumber('walletBalance', parseFloat(ethers.formatEther(balance)));
         
         const info = await contract.getUserInfo(userAddress);
+        const deposit = await contract.deposits(userAddress);
         
-        animateNumber('deposited', parseFloat(ethers.formatEther(info.deposited)));
-        animateNumber('unlocked', parseFloat(ethers.formatEther(info.unlocked)));
-        animateNumber('withdrawn', parseFloat(ethers.formatEther(info.withdrawn)));
-        animateNumber('withdrawable', parseFloat(ethers.formatEther(info.withdrawable)));
+        // 缓存用户数据用于实时计算
+        userDepositData = {
+            deposited: parseFloat(ethers.formatEther(info.deposited)),
+            startTime: Number(deposit.startTime),
+            withdrawn: parseFloat(ethers.formatEther(info.withdrawn))
+        };
+        
+        // 更新已存入金额
+        animateNumber('deposited', userDepositData.deposited);
+        
+        // 已提取金额
+        animateNumber('withdrawn', userDepositData.withdrawn);
+        
+        // 如果有存款，启动实时更新
+        if (userDepositData.deposited > 0) {
+            calculateLiveUnlocked(); // 立即计算一次
+            startLiveUpdate(); // 启动定时器
+        } else {
+            stopLiveUpdate();
+            document.getElementById('unlocked').textContent = '0.000000';
+            document.getElementById('withdrawable').textContent = '0.000000';
+        }
         
         document.getElementById('depositBtn').disabled = false;
-        document.getElementById('withdrawBtn').disabled = info.withdrawable <= 0;
         
     } catch (err) {
         console.error('更新数据失败:', err);
@@ -296,7 +364,7 @@ async function updateData() {
 
 function setMax() {
     const balance = document.getElementById('walletBalance').textContent;
-    const max = Math.max(0, parseFloat(balance) - 0.001).toFixed(4);
+    const max = Math.max(0, parseFloat(balance) - 0.001).toFixed(6);
     document.getElementById('depositAmount').value = max;
 }
 
@@ -324,7 +392,7 @@ function setLoading(btnId, loading) {
 }
 
 function formatBNB(wei) {
-    return parseFloat(ethers.formatEther(wei)).toFixed(4);
+    return parseFloat(ethers.formatEther(wei)).toFixed(6);
 }
 
 // 数字增长动画效果
@@ -351,12 +419,12 @@ function animateNumber(elementId, targetValue, duration = 800) {
         const easeProgress = 1 - Math.pow(1 - progress, 3);
         const currentValue = startValue + (difference * easeProgress);
         
-        element.textContent = currentValue.toFixed(4);
+        element.textContent = currentValue.toFixed(6);
         
         if (progress < 1) {
             requestAnimationFrame(update);
         } else {
-            element.textContent = targetValue.toFixed(4);
+            element.textContent = targetValue.toFixed(6);
         }
     }
     
