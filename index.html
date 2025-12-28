@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Vault - 简单金库</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #fff;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            color: #ffd700;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 30px;
+        }
+        
+        .card {
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+        }
+        
+        .card h2 {
+            font-size: 16px;
+            color: #aaa;
+            margin-bottom: 15px;
+        }
+        
+        .balance {
+            font-size: 28px;
+            font-weight: bold;
+            color: #ffd700;
+        }
+        
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        input {
+            flex: 1;
+            padding: 15px;
+            border: none;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+            font-size: 16px;
+        }
+        
+        input::placeholder { color: #666; }
+        
+        button {
+            padding: 15px 25px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #ffd700, #ffaa00);
+            color: #000;
+            width: 100%;
+        }
+        
+        .btn-primary:hover { transform: scale(1.02); }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        .btn-connect {
+            background: #4CAF50;
+            color: #fff;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        
+        .btn-withdraw {
+            background: #2196F3;
+            color: #fff;
+            width: 100%;
+        }
+        
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .info-row:last-child { border: none; }
+        
+        .info-label { color: #888; }
+        .info-value { font-weight: bold; }
+        
+        .status {
+            text-align: center;
+            padding: 10px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .status.connected { background: rgba(76,175,80,0.2); color: #4CAF50; }
+        .status.disconnected { background: rgba(244,67,54,0.2); color: #f44336; }
+        
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 15px 25px;
+            border-radius: 10px;
+            background: #333;
+            color: #fff;
+            display: none;
+        }
+        
+        .toast.show { display: block; }
+        .toast.success { background: #4CAF50; }
+        .toast.error { background: #f44336; }
+        
+        /* 弹窗样式 */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .modal.show { display: flex; }
+        
+        .modal-content {
+            background: #1a1a2e;
+            border-radius: 20px;
+            padding: 25px;
+            width: 90%;
+            max-width: 400px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .modal-header h3 { color: #fff; }
+        
+        .close-btn {
+            font-size: 28px;
+            cursor: pointer;
+            color: #888;
+        }
+        
+        .close-btn:hover { color: #fff; }
+        
+        .wallet-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .wallet-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 15px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .wallet-item:hover {
+            background: rgba(255,255,255,0.1);
+            transform: translateX(5px);
+        }
+        
+        .wallet-item img {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+        }
+        
+        .wallet-item span {
+            font-size: 16px;
+            font-weight: 500;
+        }
+        
+        .modal-tip {
+            text-align: center;
+            color: #666;
+            font-size: 12px;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏦 Simple Vault</h1>
+        <p class="subtitle">存入 BNB，每天解锁 5%</p>
+        
+        <!-- 连接状态 -->
+        <div id="status" class="status disconnected">未连接钱包</div>
+        
+        <!-- 连接按钮 -->
+        <button id="connectBtn" class="btn-connect">连接钱包</button>
+        
+        <!-- 钱包余额 -->
+        <div class="card">
+            <h2>💰 钱包余额</h2>
+            <div class="balance"><span id="walletBalance">0.0000</span> BNB</div>
+        </div>
+        
+        <!-- 存入 -->
+        <div class="card">
+            <h2>📥 存入 BNB</h2>
+            <div class="input-group">
+                <input type="number" id="depositAmount" placeholder="输入金额" step="0.01">
+                <button id="maxBtn" style="background:#ffd700;color:#000;">MAX</button>
+            </div>
+            <button id="depositBtn" class="btn-primary" disabled>存入</button>
+        </div>
+        
+        <!-- 我的存款信息 -->
+        <div class="card">
+            <h2>📊 我的存款</h2>
+            <div class="info-row">
+                <span class="info-label">已存入</span>
+                <span class="info-value"><span id="deposited">0.0000</span> BNB</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">已解锁</span>
+                <span class="info-value"><span id="unlocked">0.0000</span> BNB</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">已提取</span>
+                <span class="info-value"><span id="withdrawn">0.0000</span> BNB</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">可提取</span>
+                <span class="info-value" style="color:#4CAF50"><span id="withdrawable">0.0000</span> BNB</span>
+            </div>
+        </div>
+        
+        <!-- 提取按钮 -->
+        <button id="withdrawBtn" class="btn-withdraw" disabled>提取</button>
+    </div>
+    
+    <!-- 钱包选择弹窗 -->
+    <div id="walletModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>连接钱包</h3>
+                <span class="close-btn" onclick="closeModal()">&times;</span>
+            </div>
+            <div class="wallet-list">
+                <div class="wallet-item" onclick="connectWallet('metamask')">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" alt="MetaMask">
+                    <span>MetaMask</span>
+                </div>
+                <div class="wallet-item" onclick="connectWallet('okx')">
+                    <img src="https://www.okx.com/cdn/assets/imgs/226/DF77A850DCB3DF6F.png" alt="OKX">
+                    <span>OKX Wallet</span>
+                </div>
+                <div class="wallet-item" onclick="connectWallet('binance')">
+                    <img src="https://public.bnbstatic.com/static/images/common/favicon.ico" alt="Binance">
+                    <span>Binance Wallet</span>
+                </div>
+                <div class="wallet-item" onclick="connectWallet('tokenpocket')">
+                    <img src="https://www.tokenpocket.pro/favicon.ico" alt="TokenPocket">
+                    <span>TokenPocket</span>
+                </div>
+            </div>
+            <p class="modal-tip">选择你常用的钱包进行连接</p>
+        </div>
+    </div>
+    
+    <!-- 提示框 -->
+    <div id="toast" class="toast"></div>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
